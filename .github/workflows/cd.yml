@@ -138,23 +138,93 @@ jobs:
             exit 1
           fi
 
-      - name: API smoke test
+      - name: API tests
         run: |
-          echo "Creating task..."
+          echo "=== Test 1: Create Task ==="
           CREATE_RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/tasks \
             -H "Content-Type: application/json" \
             -d '{"title":"CD Test Task","description":"Created during CD pipeline"}')
           echo "Response: $CREATE_RESPONSE"
-
           TASK_ID=$(echo $CREATE_RESPONSE | jq -r '.data.id')
           if [ "$TASK_ID" == "null" ] || [ -z "$TASK_ID" ]; then
-            echo "Failed to create task"
+            echo "FAILED: Create task"
             exit 1
           fi
-          echo "Successfully created task: $TASK_ID"
+          echo "PASSED: Created task $TASK_ID"
 
-          echo "Listing tasks..."
-          curl -s http://localhost:8080/api/v1/tasks | jq .
+          echo ""
+          echo "=== Test 2: Get Task by ID ==="
+          GET_RESPONSE=$(curl -s http://localhost:8080/api/v1/tasks/$TASK_ID)
+          GET_TITLE=$(echo $GET_RESPONSE | jq -r '.data.title')
+          if [ "$GET_TITLE" != "CD Test Task" ]; then
+            echo "FAILED: Get task - expected 'CD Test Task', got '$GET_TITLE'"
+            exit 1
+          fi
+          echo "PASSED: Get task by ID"
+
+          echo ""
+          echo "=== Test 3: Update Task ==="
+          UPDATE_RESPONSE=$(curl -s -X PUT http://localhost:8080/api/v1/tasks/$TASK_ID \
+            -H "Content-Type: application/json" \
+            -d '{"title":"Updated Task","completed":true}')
+          UPDATED_TITLE=$(echo $UPDATE_RESPONSE | jq -r '.data.title')
+          UPDATED_COMPLETED=$(echo $UPDATE_RESPONSE | jq -r '.data.completed')
+          if [ "$UPDATED_TITLE" != "Updated Task" ] || [ "$UPDATED_COMPLETED" != "true" ]; then
+            echo "FAILED: Update task"
+            exit 1
+          fi
+          echo "PASSED: Update task"
+
+          echo ""
+          echo "=== Test 4: List Tasks ==="
+          LIST_RESPONSE=$(curl -s http://localhost:8080/api/v1/tasks)
+          TASK_COUNT=$(echo $LIST_RESPONSE | jq '.data | length')
+          if [ "$TASK_COUNT" -lt 1 ]; then
+            echo "FAILED: List tasks - expected at least 1 task"
+            exit 1
+          fi
+          echo "PASSED: List tasks (found $TASK_COUNT)"
+
+          echo ""
+          echo "=== Test 5: Delete Task ==="
+          DELETE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE http://localhost:8080/api/v1/tasks/$TASK_ID)
+          if [ "$DELETE_STATUS" != "204" ]; then
+            echo "FAILED: Delete task - expected 204, got $DELETE_STATUS"
+            exit 1
+          fi
+          echo "PASSED: Delete task"
+
+          echo ""
+          echo "=== Test 6: Verify Deletion ==="
+          GET_DELETED=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/tasks/$TASK_ID)
+          if [ "$GET_DELETED" != "404" ]; then
+            echo "FAILED: Task should not exist - expected 404, got $GET_DELETED"
+            exit 1
+          fi
+          echo "PASSED: Task deleted successfully"
+
+          echo ""
+          echo "=== Test 7: Create Task Without Title (Validation) ==="
+          INVALID_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/api/v1/tasks \
+            -H "Content-Type: application/json" \
+            -d '{"description":"No title"}')
+          if [ "$INVALID_RESPONSE" != "400" ]; then
+            echo "FAILED: Validation - expected 400, got $INVALID_RESPONSE"
+            exit 1
+          fi
+          echo "PASSED: Validation rejects missing title"
+
+          echo ""
+          echo "=== Test 8: Get Non-existent Task ==="
+          NOT_FOUND=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/api/v1/tasks/00000000-0000-0000-0000-000000000000)
+          if [ "$NOT_FOUND" != "404" ]; then
+            echo "FAILED: Not found - expected 404, got $NOT_FOUND"
+            exit 1
+          fi
+          echo "PASSED: Returns 404 for non-existent task"
+
+          echo ""
+          echo "=== All API Tests Passed ==="
 
       - name: OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0
