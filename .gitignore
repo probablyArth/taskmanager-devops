@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+taskmanager
+
+# Test binary
+*.test
+
+# Output
+*.out
+coverage.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+
+# Secrets
+k8s/secret.yaml
+.env
+*.env.local
+.secrets
+
+# Docker
+image.tar

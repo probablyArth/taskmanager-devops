@@ -1,0 +1,192 @@
+name: CD Pipeline
+
+on:
+  workflow_run:
+    workflows: ["CI Pipeline"]
+    types:
+      - completed
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag to deploy'
+        required: false
+        default: 'latest'
+
+env:
+  DOCKER_IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/taskmanager
+  DB_USER: ${{ secrets.DB_USER }}
+  DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+  DB_NAME: ${{ secrets.DB_NAME }}
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine image tag
+        id: image-tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+          else
+            TAG="${{ github.event.workflow_run.head_sha }}"
+            if [ -z "$TAG" ]; then
+              TAG="latest"
+            fi
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Using image tag: $TAG"
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: taskmanager-cluster
+          wait: 120s
+
+      - name: Verify cluster
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Create namespace
+        run: kubectl apply -f k8s/namespace.yaml
+
+      - name: Deploy ConfigMap
+        run: kubectl apply -f k8s/configmap.yaml
+
+      - name: Create Secret
+        run: |
+          kubectl create secret generic taskmanager-secret \
+            --namespace=taskmanager \
+            --from-literal=DATABASE_URL="postgres://${{ env.DB_USER }}:${{ env.DB_PASSWORD }}@postgres-service:5432/${{ env.DB_NAME }}?sslmode=disable" \
+            --from-literal=POSTGRES_USER="${{ env.DB_USER }}" \
+            --from-literal=POSTGRES_PASSWORD="${{ env.DB_PASSWORD }}" \
+            --from-literal=POSTGRES_DB="${{ env.DB_NAME }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy PostgreSQL
+        run: kubectl apply -f k8s/postgres.yaml
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          echo "Waiting for PostgreSQL to be ready..."
+          kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=postgres \
+            -n taskmanager --timeout=120s
+
+      - name: Update deployment image
+        run: |
+          sed -i "s|image: taskmanager:latest|image: ${{ env.DOCKER_IMAGE }}:${{ steps.image-tag.outputs.tag }}|g" k8s/deployment.yaml
+          cat k8s/deployment.yaml
+
+      - name: Deploy Application
+        run: |
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+
+      - name: Wait for deployment to be ready
+        run: |
+          echo "Waiting for deployment to be ready..."
+          kubectl rollout status deployment/taskmanager -n taskmanager --timeout=180s
+
+      - name: Verify pods
+        run: |
+          echo "=== Pods ==="
+          kubectl get pods -n taskmanager
+          echo ""
+          echo "=== Services ==="
+          kubectl get services -n taskmanager
+          echo ""
+          echo "=== Deployments ==="
+          kubectl get deployments -n taskmanager
+
+      - name: Setup port forwarding
+        run: |
+          kubectl port-forward svc/taskmanager-service 8080:8080 -n taskmanager &
+          echo "Port forwarding started, waiting for service..."
+          sleep 10
+
+      - name: Health check
+        run: |
+          echo "Running health check..."
+          for i in {1..10}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "000")
+            if [ "$response" == "200" ]; then
+              echo "Health check passed!"
+              curl -s http://localhost:8080/health | jq .
+              break
+            fi
+            echo "Attempt $i: Got status $response, retrying..."
+            sleep 5
+          done
+
+          if [ "$response" != "200" ]; then
+            echo "Health check failed!"
+            kubectl logs -l app.kubernetes.io/name=taskmanager -n taskmanager --tail=100
+            exit 1
+          fi
+
+      - name: API smoke test
+        run: |
+          echo "Creating task..."
+          CREATE_RESPONSE=$(curl -s -X POST http://localhost:8080/api/v1/tasks \
+            -H "Content-Type: application/json" \
+            -d '{"title":"CD Test Task","description":"Created during CD pipeline"}')
+          echo "Response: $CREATE_RESPONSE"
+
+          TASK_ID=$(echo $CREATE_RESPONSE | jq -r '.data.id')
+          if [ "$TASK_ID" == "null" ] || [ -z "$TASK_ID" ]; then
+            echo "Failed to create task"
+            exit 1
+          fi
+          echo "Successfully created task: $TASK_ID"
+
+          echo "Listing tasks..."
+          curl -s http://localhost:8080/api/v1/tasks | jq .
+
+      - name: OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:8080'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a -j'
+        continue-on-error: true
+
+      - name: Upload ZAP Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html
+        if: always()
+        continue-on-error: true
+
+      - name: Deployment Summary
+        if: always()
+        run: |
+          echo "=========================================="
+          echo "        DEPLOYMENT SUMMARY"
+          echo "=========================================="
+          echo "Image: ${{ env.DOCKER_IMAGE }}:${{ steps.image-tag.outputs.tag }}"
+          echo "Namespace: taskmanager"
+          echo ""
+          echo "=== Pod Status ==="
+          kubectl get pods -n taskmanager -o wide || true
+          echo ""
+          echo "=== Recent Events ==="
+          kubectl get events -n taskmanager --sort-by='.lastTimestamp' | tail -20 || true
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Application Logs ==="
+          kubectl logs -l app.kubernetes.io/name=taskmanager -n taskmanager --tail=100 || true
+          echo ""
+          echo "=== PostgreSQL Logs ==="
+          kubectl logs -l app.kubernetes.io/name=postgres -n taskmanager --tail=50 || true
+          echo ""
+          echo "=== Describe Pods ==="
+          kubectl describe pods -n taskmanager || true

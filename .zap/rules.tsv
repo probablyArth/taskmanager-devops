@@ -1,0 +1,62 @@
+# ZAP Baseline Scan Rules Configuration
+# Format: rule_id	action	description
+# Actions: IGNORE, WARN, FAIL
+
+# Informational findings - IGNORE for baseline
+10015	IGNORE	Incomplete or No Cache-control and Pragma HTTP Header Set
+10016	IGNORE	Web Browser XSS Protection Not Enabled
+10017	IGNORE	Cross-Domain JavaScript Source File Inclusion
+10019	IGNORE	Content-Type Header Missing
+10020	IGNORE	X-Frame-Options Header Not Set
+10021	IGNORE	X-Content-Type-Options Header Missing
+10023	IGNORE	Information Disclosure - Debug Error Messages
+10024	IGNORE	Information Disclosure - Sensitive Information in URL
+10025	IGNORE	Information Disclosure - Sensitive Information in HTTP Referrer Header
+10026	IGNORE	HTTP Parameter Override
+10027	IGNORE	Information Disclosure - Suspicious Comments
+10028	IGNORE	Open Redirect
+10029	IGNORE	Cookie Poisoning
+10030	IGNORE	User Controllable Charset
+10031	IGNORE	User Controllable HTML Element Attribute (Potential XSS)
+10032	IGNORE	Viewstate
+10033	IGNORE	Directory Browsing
+10034	IGNORE	Heartbleed OpenSSL Vulnerability
+10035	IGNORE	Strict-Transport-Security Header Not Set
+10036	IGNORE	Server Leaks Version Information via "Server" HTTP Response Header Field
+10037	IGNORE	Server Leaks Information via "X-Powered-By" HTTP Response Header Field(s)
+10038	IGNORE	Content Security Policy (CSP) Header Not Set
+10039	IGNORE	X-Backend-Server Header Information Leak
+10040	IGNORE	Secure Pages Include Mixed Content
+10041	IGNORE	HTTP to HTTPS Insecure Transition in Form Post
+10042	IGNORE	HTTPS to HTTP Insecure Transition in Form Post
+10043	IGNORE	User Controllable JavaScript Event (XSS)
+10044	IGNORE	Big Redirect Detected (Potential Sensitive Information Leak)
+10045	IGNORE	Source Code Disclosure - /WEB-INF folder
+10048	IGNORE	Remote Code Execution - Shell Shock
+10049	IGNORE	Non-Storable Content
+10050	IGNORE	Retrieved from Cache
+10052	IGNORE	X-ChromeLogger-Data (XCOLD) Header Information Leak
+10054	IGNORE	Cookie Without SameSite Attribute
+10055	IGNORE	CSP
+10056	IGNORE	X-Debug-Token Information Leak
+10057	IGNORE	Username Hash Found
+10061	IGNORE	X-AspNet-Version Response Header
+10062	IGNORE	PII Disclosure
+10063	IGNORE	Permissions Policy Header Not Set
+10096	IGNORE	Timestamp Disclosure
+10097	IGNORE	Insufficient Site Isolation Against Spectre Vulnerability
+10098	IGNORE	Cross-Domain Misconfiguration
+10105	IGNORE	Weak Authentication Method
+10108	IGNORE	Reverse Tabnabbing
+10109	IGNORE	Modern Web Application
+10110	IGNORE	Dangerous JS Functions
+
+# Medium severity - WARN for awareness
+40012	WARN	Cross Site Scripting (Reflected)
+40014	WARN	Cross Site Scripting (Persistent)
+40016	WARN	Cross Site Scripting (Persistent) - Prime
+40017	WARN	Cross Site Scripting (Persistent) - Spider
+
+# High severity - FAIL
+90022	FAIL	Application Error Disclosure
+90023	FAIL	XML External Entity Attack
