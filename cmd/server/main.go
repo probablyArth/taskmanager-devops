@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer func() {
-		_ = taskStore.Close() //nolint:errcheck
+		_ = taskStore.Close() //nolint:errcheck // best effort cleanup on shutdown
 	}()
 	logger.Info("database connection established")
 

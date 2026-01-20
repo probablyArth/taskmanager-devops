@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // postgres driver
 
 	"github.com/arth/taskmanager/internal/model"
 )
@@ -116,7 +116,7 @@ func (s *PostgresStore) List(ctx context.Context) ([]*model.Task, error) {
 		return nil, fmt.Errorf("failed to list tasks: %w", err)
 	}
 	defer func() {
-		_ = rows.Close() //nolint:errcheck
+		_ = rows.Close() //nolint:errcheck // rows.Err() checked below
 	}()
 
 	var tasks []*model.Task

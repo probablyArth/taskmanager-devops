@@ -63,15 +63,3 @@ linters:
 
 run:
   timeout: 5m
-
-formatters:
-  enable:
-    - goimports
-  settings:
-    goimports:
-      local-prefixes:
-        - github.com/arth/taskmanager
-
-output:
-  format: colored-line-number
-  sort-results: true
