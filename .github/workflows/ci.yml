@@ -153,6 +153,7 @@ jobs:
     needs: [build, sast, sca]
     outputs:
       image-tag: ${{ steps.meta.outputs.tags }}
+      short-sha: ${{ steps.sha.outputs.short }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -165,6 +166,10 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Extract metadata
         id: meta
@@ -189,7 +194,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Save Docker image
-        run: docker save ${{ env.DOCKER_IMAGE }}:${{ github.sha }} -o image.tar
+        run: docker save ${{ env.DOCKER_IMAGE }}:${{ steps.sha.outputs.short }} -o image.tar
 
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v4
@@ -218,7 +223,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.DOCKER_IMAGE }}:${{ needs.docker-build.outputs.short-sha }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
@@ -232,7 +237,7 @@ jobs:
       - name: Run Trivy (fail on critical)
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+          image-ref: ${{ env.DOCKER_IMAGE }}:${{ needs.docker-build.outputs.short-sha }}
           format: 'table'
           exit-code: '1'
           severity: 'CRITICAL'
@@ -276,7 +281,7 @@ jobs:
             -e PORT=8080 \
             -e DATABASE_URL="postgres://${{ env.DB_USER }}:${{ env.DB_PASSWORD }}@localhost:5432/${{ env.DB_NAME }}?sslmode=disable" \
             -e LOG_LEVEL=info \
-            ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
+            ${{ env.DOCKER_IMAGE }}:${{ needs.docker-build.outputs.short-sha }}
 
       - name: Wait for container to be ready
         run: |
